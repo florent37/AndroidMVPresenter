@@ -31,7 +31,7 @@ ext {
     libraryName = 'AndroidMVPresenter'
     artifact = 'androidmvpresenter'
 
-    libraryDescription = 'AndroidMVP'
+    libraryDescription = 'AndroidMVPresenter'
 
     siteUrl = 'https://github.com/florent37/AndroidMVPresenter'
     gitUrl = 'https://github.com/florent37/AndroidMVPresenter.git'
