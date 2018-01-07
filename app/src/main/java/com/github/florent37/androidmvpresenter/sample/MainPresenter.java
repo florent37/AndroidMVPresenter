@@ -5,12 +5,9 @@ import com.github.florent37.androidmvpresenter.AbstractPresenter;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import io.reactivex.Observable;
-import io.reactivex.ObservableSource;
 import io.reactivex.functions.Function;
-import io.reactivex.functions.Predicate;
 
 public class MainPresenter extends AbstractPresenter<MainPresenter.View> {
 
@@ -25,11 +22,12 @@ public class MainPresenter extends AbstractPresenter<MainPresenter.View> {
                 new Function<Throwable, Observable<?>>() {
                     @Override
                     public Observable<?> apply(Throwable throwable) throws Exception {
-                        if(throwable instanceof AuthentificationException && ((AuthentificationException) throwable).statusCode == 401){
+                        if (throwable instanceof AuthentificationException && ((AuthentificationException) throwable).statusCode == 401) {
                             return authRepo.authentificate().toObservable();
-                        } else if(throwable instanceof IOException) {
+                        } else if (throwable instanceof IOException) {
                             return Observable.timer(3, TimeUnit.SECONDS); //wait 3 seconds before continue
                         }
+                        return Observable.error(throwable);
                     }
                 });
     }
@@ -44,12 +42,12 @@ public class MainPresenter extends AbstractPresenter<MainPresenter.View> {
         });
     }
 
+    public interface View extends AbstractPresenter.View {
+        void sayHello();
+    }
+
     //example of Auth Error
     private class AuthentificationException extends Throwable {
         private int statusCode;
-    }
-
-    public interface View extends AbstractPresenter.View {
-        void sayHello();
     }
 }

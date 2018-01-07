@@ -37,6 +37,7 @@ public class MainPresenter extends AbstractPresenter<MainPresenter.View> {
                         } else if(throwable instanceof IOException) {
                             return Observable.timer(3, TimeUnit.SECONDS); //wait 3 seconds before continue
                         }
+                        return Observable.error(throwable);
                     }
                 });
     }
