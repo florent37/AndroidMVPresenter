@@ -157,7 +157,6 @@ public abstract class AbstractPresenter<V extends AbstractPresenter.View> {
                 return upstream
                         .subscribeOn(Schedulers.io())
                         .observeOn(AndroidSchedulers.mainThread())
-                        .retryWhen(handler)
                         .retryWhen(new RetryWithDelay(maxRetry, todoBeforeRetry).forSingle)
                         .doOnSubscribe(new Consumer<Disposable>() {
                             @Override
