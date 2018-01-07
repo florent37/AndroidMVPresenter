@@ -4,9 +4,16 @@ import android.arch.lifecycle.Lifecycle;
 import android.arch.lifecycle.LifecycleOwner;
 import android.support.annotation.CallSuper;
 
+import org.reactivestreams.Publisher;
+
 import java.lang.ref.WeakReference;
 
 import florent37.github.com.rxlifecycle.RxLifecycle;
+import io.reactivex.BackpressureStrategy;
+import io.reactivex.Flowable;
+import io.reactivex.Observable;
+import io.reactivex.ObservableSource;
+import io.reactivex.ObservableTransformer;
 import io.reactivex.Single;
 import io.reactivex.SingleSource;
 import io.reactivex.SingleTransformer;
@@ -15,6 +22,8 @@ import io.reactivex.annotations.NonNull;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.disposables.Disposable;
 import io.reactivex.functions.Consumer;
+import io.reactivex.functions.Function;
+import io.reactivex.functions.Predicate;
 import io.reactivex.schedulers.Schedulers;
 
 /**
@@ -24,10 +33,17 @@ import io.reactivex.schedulers.Schedulers;
 public abstract class AbstractPresenter<V extends AbstractPresenter.View> {
 
     private final CompositeDisposable compositeDisposable;
+    private int maxRetry = 3;
     private WeakReference<V> viewReference;
+    private Function<Throwable, Observable<?>> todoBeforeRetry;
 
     public AbstractPresenter() {
         compositeDisposable = new CompositeDisposable();
+    }
+
+    public void setupRetry(int maxRetry, Function<Throwable, Observable<?>> todoBeforeRetry){
+        this.maxRetry = maxRetry;
+        this.todoBeforeRetry = todoBeforeRetry;
     }
 
     public void addDisposable(Disposable disposable) {
@@ -92,13 +108,75 @@ public abstract class AbstractPresenter<V extends AbstractPresenter.View> {
         }
     }
 
-    public <R> SingleTransformer<? super R, ? extends R> compose() {
+    protected static class RetryWithDelay {
+
+        private final int maxRetries;
+        private int retryCount = 0;
+        private Function<Throwable, Observable<?>> todoBeforeRetry;
+
+        public RetryWithDelay(final int maxRetries, final Function<Throwable, Observable<?>> todoBeforeRetry) {
+            this.maxRetries = maxRetries;
+            this.todoBeforeRetry = todoBeforeRetry;
+        }
+
+        public Function<Observable<? extends Throwable>, Observable<?>> forObservable = new Function<Observable<? extends Throwable>, Observable<?>>() {
+            @Override
+            public Observable<?> apply(Observable<? extends Throwable> observable) throws Exception {
+                return observable.flatMap(new Function<Throwable, ObservableSource<?>>() {
+                    @Override
+                    public ObservableSource<?> apply(Throwable throwable) throws Exception {
+                        if(++retryCount <= maxRetries){
+                            return todoBeforeRetry.apply(throwable);
+                        }
+                        return Observable.error(throwable);
+                    }
+                });
+            }
+        };
+
+        public Function<Flowable<Throwable>, Publisher<?>> forSingle = new Function<Flowable<Throwable>, Publisher<?>>() {
+            @Override
+            public Publisher<?> apply(Flowable<Throwable> throwableFlowable) throws Exception {
+                return throwableFlowable.flatMap(new Function<Throwable, Publisher<?>>() {
+                    @Override
+                    public Publisher<?> apply(Throwable throwable) throws Exception {
+                        if(++retryCount <= maxRetries){
+                            return todoBeforeRetry.apply(throwable).toFlowable(BackpressureStrategy.BUFFER);
+                        }
+                        return Flowable.error(throwable);
+                    }
+                });
+            }
+        };
+    }
+
+    public <R> SingleTransformer<? super R, ? extends R> composeSingle() {
         return new SingleTransformer<R, R>() {
             @Override
             public SingleSource<R> apply(@NonNull Single<R> upstream) {
                 return upstream
                         .subscribeOn(Schedulers.io())
                         .observeOn(AndroidSchedulers.mainThread())
+                        .retryWhen(handler)
+                        .retryWhen(new RetryWithDelay(maxRetry, todoBeforeRetry).forSingle)
+                        .doOnSubscribe(new Consumer<Disposable>() {
+                            @Override
+                            public void accept(@NonNull Disposable disposable) throws Exception {
+                                AbstractPresenter.this.addDisposable(disposable);
+                            }
+                        });
+            }
+        };
+    }
+
+    public <R> ObservableTransformer<? super R, ? extends R> composeObservable() {
+        return new ObservableTransformer<R, R>() {
+            @Override
+            public ObservableSource<R> apply(@NonNull Observable<R> upstream) {
+                return upstream
+                        .subscribeOn(Schedulers.io())
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .retryWhen(new RetryWithDelay(maxRetry, todoBeforeRetry).forObservable)
                         .doOnSubscribe(new Consumer<Disposable>() {
                             @Override
                             public void accept(@NonNull Disposable disposable) throws Exception {

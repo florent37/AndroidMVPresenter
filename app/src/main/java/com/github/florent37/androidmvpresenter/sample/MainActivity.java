@@ -17,7 +17,7 @@ public class MainActivity extends AppCompatActivity implements MainPresenter.Vie
 
         textView = findViewById(R.id.text);
 
-        presenter = new MainPresenter(); //inject if you can
+        presenter = new MainPresenter(new AuthRepoImpl()); //inject if you can
         presenter.bind(this, this);
     }
 
